@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package co.id.ez.system.server;
+package co.id.ez.system.server.http;
 
 import co.id.ez.system.core.log.LogService;
 import jakarta.ws.rs.core.Response;
@@ -15,7 +15,7 @@ import jakarta.ws.rs.ext.Provider;
  * @author Lutfi
  */
 @Provider
-public class ExceptionHandler implements ExceptionMapper<Exception> {
+public class ExceptionHTTPHandler implements ExceptionMapper<Exception> {
 
     @Override
     public Response toResponse(Exception e) {
