@@ -5,6 +5,7 @@
 package co.id.ez.system.server.websocket;
 
 import java.util.HashMap;
+import java.util.List;
 
 /**
  *
@@ -13,11 +14,13 @@ import java.util.HashMap;
 public class WSClient {
     
     private final String token, userid, clientid;
+    private final List<String> topics;
 
-    public WSClient(HashMap<String, String> queryParam) {
-        this.token = queryParam.get("token");
-        this.userid = queryParam.get("user");
-        this.clientid = queryParam.get("client");
+    public WSClient(HashMap<String, Object> queryParam) {
+        this.token = queryParam.get("token").toString();
+        this.userid = queryParam.get("user").toString();
+        this.clientid = queryParam.get("client").toString();
+        this.topics = (List<String>) queryParam.get("topics");
     }
 
     public String getToken() {
@@ -34,6 +37,14 @@ public class WSClient {
     
     public String getId(){
         return clientid.concat("@").concat(userid);
+    }
+
+    public List<String> getTopics() {
+        return topics;
+    }
+
+    public boolean isConsumeTopic(String topic){
+        return topics.contains(topic);
     }
 
     @Override

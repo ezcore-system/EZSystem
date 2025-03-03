@@ -9,7 +9,10 @@ import co.id.ez.system.core.log.LogService;
 import co.id.ez.system.core.rc.RC;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.glassfish.grizzly.http.HttpRequestPacket;
@@ -27,16 +30,23 @@ import org.glassfish.grizzly.websockets.WebSocketListener;
  */
 public abstract class WebSocketClientHandler extends WebSocketApplication {
 
-    protected String[] mandatoryKey = new String[]{"token", "user", "client"};
+    protected String[] mandatoryKey = new String[]{"token", "user", "client", "topics"};
     protected ConcurrentHashMap<WSClient, WebSocket> webSocketClients = new ConcurrentHashMap<>();
 
+    public abstract void validateAccess(HashMap<String, Object> pQueryMaps);
+    
     @Override
     public WebSocket createSocket(ProtocolHandler handler, HttpRequestPacket requestPacket, WebSocketListener... listeners) {
         WebSocket socket = super.createSocket(handler, requestPacket, listeners);
-        HashMap<String, String> tReqQuey = parseQuery(requestPacket.getQueryString());
+        HashMap<String, Object> tReqQuey = parseQuery(requestPacket.getQueryString());
         WSClient client = new WSClient(tReqQuey);
         webSocketClients.put(client, socket);
         return socket;
+    }
+
+    @Override
+    public void onPing(WebSocket socket, byte[] bytes) {
+        super.onPing(socket, bytes); // Generated from nbfs://nbhost/SystemFileSystem/Templates/Classes/Code/OverriddenMethodBody
     }
 
     @Override
@@ -44,48 +54,57 @@ public abstract class WebSocketClientHandler extends WebSocketApplication {
         try {
             String tResourchPath = handshake.getLocation();
             URI uri = new URI(tResourchPath);
-            HashMap<String, String> tReqQuey = parseQuery(uri.getQuery());
+            HashMap<String, Object> tReqQuey = parseQuery(uri.getQuery());
             validateMandatoryParam(tReqQuey);
         } catch (URISyntaxException ex) {
             LogService.getInstance(this).temp("web-socket")
                     .withCause(ex).log("[Exception] Some thing wrong on HandShake.", true);
-            throw new HandshakeException(1001, "Something wrong on server");
+            throw new HandshakeException(WebSocket.PROTOCOL_ERROR, "Something wrong on server");
         } catch (ServiceException e) {
             LogService.getInstance(this).temp("web-socket")
                     .withCause(e).log("[ServiceException] Some thing wrong on HandShake. " + e.getMessage(), true);
-            throw new HandshakeException(Integer.parseInt(e.getRC().getResponseCodeString()), e.getMessage());
+            throw new HandshakeException(WebSocket.INVALID_DATA, e.getMessage());
         } catch (Exception e) {
             LogService.getInstance(this).temp("web-socket")
                     .withCause(e).log("[Exception] Some thing wrong on HandShake.", true);
-            throw new HandshakeException(1001, "Something wrong on server");
+            throw new HandshakeException(WebSocket.PROTOCOL_ERROR, "Something wrong on server");
         } catch (Throwable e) {
             LogService.getInstance(this).temp("web-socket")
                     .withCause(e).log("[Throwable] Some thing wrong on HandShake.", true);
-            throw new HandshakeException(1001, "Something wrong on server");
+            throw new HandshakeException(WebSocket.PROTOCOL_ERROR, "Something wrong on server");
         }
     }
 
-    private HashMap<String, String> parseQuery(String query) {
-        HashMap<String, String> parserd = new HashMap<>();
+    private HashMap<String, Object> parseQuery(String query) {
+        HashMap<String, Object> parserd = new HashMap<>();
         if (query != null) {
             String[] tQuerys = query.split("&");
             for (String tQuerye : tQuerys) {
                 String[] tSplitQuery = tQuerye.split("=");
                 if (tSplitQuery.length >= 2) {
-                    parserd.put(tSplitQuery[0], tSplitQuery[1]);
+                    if (tSplitQuery[0].equalsIgnoreCase("topics")) {
+                        String[] topics = tSplitQuery[1].split(";");
+                        List<String> topicList = new ArrayList<>();
+                        topicList.addAll(Arrays.asList(topics));
+                        parserd.put(tSplitQuery[0], topicList);
+                    } else {
+                        parserd.put(tSplitQuery[0], tSplitQuery[1]);
+                    }
                 }
             }
         }
 
         return parserd;
     }
-    
-    public void validateMandatoryParam(HashMap<String, String> requesParam){
+
+    public void validateMandatoryParam(HashMap<String, Object> requesParam) {
         for (String key : mandatoryKey) {
-            if(!requesParam.containsKey(key)){
+            if (!requesParam.containsKey(key)) {
                 throw new ServiceException(RC.ERROR_INVALID_MESSAGE, "Invalid mandatory param " + key);
             }
         }
+        
+        validateAccess(requesParam);
     }
 
     @Override
@@ -94,14 +113,15 @@ public abstract class WebSocketClientHandler extends WebSocketApplication {
             LogService.getInstance(this).temp("web-socket").log("Connected client: " + socket);
             super.onConnect(socket);
             socket.send("{\"code\": \"200\",\"status\": \"Conected\"}");
+            LogService.getInstance(this).temp("web-socket").log("Client available: " + webSocketClients.size());
         } catch (Exception e) {
             LogService.getInstance(this).temp("web-socket")
                     .withCause(e).log("[Exception] Some thing wrong on connect socket handler:" + socket, true);
-            socket.close(1002, "Invalid Connection");
+            socket.close(WebSocket.END_POINT_GOING_DOWN, "Invalid Connection");
         } catch (Throwable e) {
             LogService.getInstance(this).temp("web-socket")
                     .withCause(e).log("[Throwable] Some thing wrong on connect socket handler:" + socket, true);
-            socket.close(1002, "Invalid Connection");
+            socket.close(WebSocket.END_POINT_GOING_DOWN, "Invalid Connection");
         }
 
     }
@@ -126,6 +146,7 @@ public abstract class WebSocketClientHandler extends WebSocketApplication {
         LogService.getInstance(this).temp("web-socket").log("Client clossed: " + socket);
         webSocketClients.values().remove(socket);
         super.onClose(socket, frame);
+        LogService.getInstance(this).temp("web-socket").log("Client available: " + webSocketClients.size());
     }
 
 }
